@@ -1,0 +1,23 @@
+# Ignore environment and sensitive files
+.env
+
+
+# Ignore vendor directory (commonly for PHP projects)
+vendor/
+
+# Ignore SQL query files
+SQL_Query/
+
+# Ignore utils directory
+utils/
+
+# Ignore logs
+logs/
+*.log
+
+# Ignore system files
+.DS_Store
+.vscode/
+
+# Ignore cache
+cache/
