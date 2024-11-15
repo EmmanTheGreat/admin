@@ -1,0 +1,4 @@
+/vendor/
+/SQL_Query/
+/tests/
+.env
