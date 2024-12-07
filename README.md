@@ -65,5 +65,6 @@ Ensure your local server (e.g., XAMPP or MAMP) is running, then access the app i
 ### 7. API Documentation
 You can find the full API documentation here:
 <a href="https://documenter.getpostman.com/view/30788290/2sAY4shiko" target="_blank">API Documentation</a>
-
+### 8.. API DOCUMENTATION For Product Catalog
+<a href="https://lively-escape-863347.postman.co/workspace/5b5c7441-08d4-40d2-8582-7edb956abe9d/documentation/30601086-6ac63832-5397-4a2a-bddb-b876bdc7cd83"> Product Catalog Documentation
 ......
