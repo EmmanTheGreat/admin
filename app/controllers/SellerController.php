@@ -25,57 +25,78 @@ class SellerController
 
     /* ====== SECTION 1: Product Creation ====== */
 
-    // Create a new product
     public function createProduct($data, $files, $token)
-    {
-        if (!$this->isSeller($token)) {
-            // Unauthorized access response
-            return json_encode([
-                'status' => 'error',
-                'message' => 'Unauthorized. Only sellers can create products.'
-            ], JSON_PRETTY_PRINT);
-        }
-
-        $decoded = $this->tokenValidator->validateToken($token);
-        $sellerId = $decoded->uuid;
-
-        // Handle primary image upload
-        if (isset($files['primary_image']) && $files['primary_image']['error'] === UPLOAD_ERR_OK) {
-            $primaryImagePath = $this->uploadImage($files['primary_image']);
-            $data['product_image'] = $primaryImagePath;
-        } else {
-            error_log("Primary image upload failed or not provided.");
-        }
-
-        // Create the product in the database
-        $productId = $this->product->createProduct($data, $sellerId);
-
-        if ($productId) {
-            // Handle additional images if they exist
-            if (isset($files['additional_images'])) {
-                $this->handleAdditionalImages($files['additional_images'], $productId);
-            }
-
-            // Success response
-            return json_encode([
-                'status' => 'success',
-                'message' => 'Product created successfully.',
-                'data' => [
-                    'product_id' => $productId,
-                    'product_name' => $data['product_name'],
-                    'seller_id' => $sellerId,
-                    'product_image' => $data['product_image']
-                ]
-            ], JSON_PRETTY_PRINT);
-        }
-
-        // Failure response
+{
+    if (!$this->isSeller($token)) {
+        // Unauthorized access response
         return json_encode([
             'status' => 'error',
-            'message' => 'Failed to create product.',
+            'message' => 'Unauthorized. Only sellers can create products.'
+        ], JSON_PRETTY_PRINT);
+    }
+
+    $decoded = $this->tokenValidator->validateToken($token);
+    $sellerId = $decoded->uuid;
+
+    // Check if a product with the same name already exists for the seller
+    $existingProduct = $this->product->getProductByNameAndSeller($data['product_name'], $sellerId);
+    if ($existingProduct) {
+        // Return error if product already exists
+        return json_encode([
+            'status' => 'error',
+            'message' => 'Product already exists with the same name.',
             'data' => null
         ], JSON_PRETTY_PRINT);
     }
+
+    // Handle primary image upload
+    if (isset($files['primary_image']) && $files['primary_image']['error'] === UPLOAD_ERR_OK) {
+        $primaryImagePath = $this->uploadImage($files['primary_image']);
+        $data['product_image'] = $primaryImagePath;
+    } else {
+        error_log("Primary image upload failed or not provided.");
+    }
+
+    // Create the product in the database
+    $productId = $this->product->createProduct($data, $sellerId);
+
+    if ($productId) {
+        // Handle additional images if they exist
+        if (isset($files['additional_images'])) {
+            $this->handleAdditionalImages($files['additional_images'], $productId);
+        }
+
+        // Success response
+        return json_encode([
+            'status' => 'success',
+            'message' => 'Product created successfully.',
+            'data' => [
+                'product_id' => $productId,
+                'product_name' => $data['product_name'],
+                'seller_id' => $sellerId,
+                'product_image' => $data['product_image'],
+                'description' => $data['description'],  // Product description
+                'price' => $data['price'],  // Product price
+                'stock_quantity' => $data['stock_quantity'],  // Product stock
+                'category' => $data['category'],  // Product category
+                'size' => isset($data['size']) ? $data['size'] : null,  // Size, if applicable
+                'color' => isset($data['color']) ? $data['color'] : null,  // Color, if applicable
+                'created_at' => date('Y-m-d H:i:s'),  // Timestamp of product creation
+                'message' => 'Product created successfully with all the details.'
+            ]
+        ], JSON_PRETTY_PRINT);
+        
+    }
+
+    // Failure response
+    return json_encode([
+        'status' => 'error',
+        'message' => 'Failed to create product.',
+        'data' => null
+    ], JSON_PRETTY_PRINT);
+}
+
+
 
 
     /* ====== SECTION 2: Product Update ====== */
@@ -87,21 +108,21 @@ class SellerController
         if (!$this->isSeller($token)) {
             return $this->generateResponse('error', 'Unauthorized. Only sellers can update products.');
         }
-    
+
         $decoded = $this->tokenValidator->validateToken($token);
         $sellerId = $decoded->uuid;
-    
+
         // Get the existing product to check for validation
         $existingProduct = $this->product->getProductById($productId);
         if (!$existingProduct) {
             return $this->generateResponse('error', 'Product not found.');
         }
-    
+
         // If product image is not set in the data, retain the existing one
         if (!isset($data['product_image'])) {
             $data['product_image'] = $existingProduct['product_image'];
         }
-    
+
         // Check for duplicate product name
         if ($existingProduct['product_name'] !== $data['product_name']) {
             $duplicateCheck = $this->product->checkDuplicateName($data['product_name'], $sellerId, $productId);
@@ -109,18 +130,22 @@ class SellerController
                 return $this->generateResponse('error', 'A product with this name already exists for this seller.');
             }
         }
-    
+
         // Update the product in the database
         $result = $this->product->updateProduct($productId, $data, $sellerId);
-    
+
         // Return response based on the result
         if ($result) {
-            return $this->generateResponse('success', 'Product details updated successfully.');
+            // Fetch the updated product details to include in the response
+            $updatedProduct = $this->product->getProductById($productId);
+
+            return $this->generateResponse('success', 'Product updated successfully.', $updatedProduct);
         } else {
             return $this->generateResponse('error', 'Failed to update product details.');
         }
     }
-    
+
+
     /**
      * Helper function to generate consistent responses
      */
@@ -132,7 +157,7 @@ class SellerController
             'data' => $data
         ], JSON_PRETTY_PRINT);
     }
-    
+
 
     // Update Image
     public function updateProductImages($productId, $files, $token)
@@ -230,59 +255,59 @@ class SellerController
         ], JSON_PRETTY_PRINT);
     }
 
-// View Specific Product of Seller
-public function viewSpecificProduct($productId, $token)
-{
-    error_log("Product ID: $productId");
+    // View Specific Product of Seller
+    public function viewSpecificProduct($productId, $token)
+    {
+        error_log("Product ID: $productId");
 
-    // Check if the user is a seller
-    if (!$this->isSeller($token)) {
+        // Check if the user is a seller
+        if (!$this->isSeller($token)) {
+            return json_encode([
+                'status' => 'error',
+                'message' => 'Unauthorized. Only sellers can view their products.'
+            ]);
+        }
+
+        // Decode the token to get the seller ID
+        $decoded = $this->tokenValidator->validateToken($token);
+        if (!$decoded) {
+            error_log("Token validation failed.");
+            return json_encode([
+                'status' => 'error',
+                'message' => 'Token validation failed.'
+            ]);
+        }
+
+        $sellerId = $decoded->uuid;
+
+        // Fetch the product details
+        $product = $this->product->getProductById($productId);
+
+        // Log the fetched product data for debugging
+        error_log("Product Retrieved: " . print_r($product, true)); // Log the product data
+
+        // Check if the product exists
+        if (!$product) {
+            return json_encode([
+                'status' => 'error',
+                'message' => 'Product not found'
+            ]);
+        }
+
+        // Check if the product belongs to the seller
+        if ($product['seller_id'] !== $sellerId) {
+            return json_encode([
+                'status' => 'error',
+                'message' => 'Product does not belong to the seller'
+            ]);
+        }
+
+        // Return the product data if everything is correct
         return json_encode([
-            'status' => 'error', 
-            'message' => 'Unauthorized. Only sellers can view their products.'
+            'status' => 'success',
+            'data' => $product
         ]);
     }
-
-    // Decode the token to get the seller ID
-    $decoded = $this->tokenValidator->validateToken($token);
-    if (!$decoded) {
-        error_log("Token validation failed.");
-        return json_encode([
-            'status' => 'error', 
-            'message' => 'Token validation failed.'
-        ]);
-    }
-
-    $sellerId = $decoded->uuid;
-
-    // Fetch the product details
-    $product = $this->product->getProductById($productId);
-
-    // Log the fetched product data for debugging
-    error_log("Product Retrieved: " . print_r($product, true)); // Log the product data
-
-    // Check if the product exists
-    if (!$product) {
-        return json_encode([
-            'status' => 'error', 
-            'message' => 'Product not found'
-        ]);
-    }
-
-    // Check if the product belongs to the seller
-    if ($product['seller_id'] !== $sellerId) {
-        return json_encode([
-            'status' => 'error', 
-            'message' => 'Product does not belong to the seller'
-        ]);
-    }
-
-    // Return the product data if everything is correct
-    return json_encode([
-        'status' => 'success', 
-        'data' => $product
-    ]);
-}
 
 
     /* ====== SECTION 4: Product Deletion ====== */
@@ -293,26 +318,26 @@ public function viewSpecificProduct($productId, $token)
         if (!$this->isSeller($token)) {
             return json_encode(['status' => 'error', 'message' => 'Unauthorized. Only sellers can delete products.']);
         }
-    
+
         // Validate token and get seller ID
         $decoded = $this->tokenValidator->validateToken($token);
         $sellerId = $decoded->uuid;
-    
+
         // Check if the product exists
         $product = $this->product->getProductById($productId);
         if (!$product) {
             // If no product is found, return the message "No products found"
             return json_encode(['status' => 'error', 'message' => 'No product found']);
         }
-    
+
         // Get the paths of product images
         $imagePaths = $this->product->getProductImages($productId);
         $deletedFiles = true;  // Flag to track file deletion success
-    
+
         // Loop through each image path and delete the files
         foreach ($imagePaths as $path) {
             $filePath = "public/images/" . basename($path);
-    
+
             // Check if the file exists before attempting deletion
             if (file_exists($filePath)) {
                 // Try to delete the file
@@ -329,21 +354,26 @@ public function viewSpecificProduct($productId, $token)
                 error_log("File not found: $filePath");
             }
         }
-    
+
         // Proceed to delete the product images from the database
         $this->product->deleteProductImages($productId);
-    
+
         // Delete the product from the database
         $productDeletionResult = $this->product->deleteProduct($productId, $sellerId);
-    
+
         // Check if the deletion process was successful
         if ($productDeletionResult && $deletedFiles) {
-            return json_encode(['status' => 'success', 'message' => 'Product and associated images deleted successfully']);
+            // Return the deleted product details in the response
+            return json_encode([
+                'status' => 'success',
+                'message' => 'Product and associated images deleted successfully.',
+                'deleted_product' => $product // Include the deleted product in the response
+            ], JSON_PRETTY_PRINT);
         } else {
             return json_encode(['status' => 'error', 'message' => 'Failed to delete product or product images']);
         }
     }
-    
+
     /* ====== SECTION 5: Helper Methods ====== */
 
     private function uploadImage($file)
